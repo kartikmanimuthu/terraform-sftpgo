@@ -1,0 +1,103 @@
+---
+- name: Deploy SFTPGo via SSM
+  hosts: all
+  become: yes
+  vars:
+    ansible_connection: aws_ssm
+    ansible_aws_ssm_region: "{{ ansible_aws_ssm_region }}"
+    ansible_aws_ssm_bucket_name: "{{ ansible_aws_ssm_bucket_name }}"
+    ansible_python_interpreter: /usr/bin/python3
+
+    # SFTPGo configuration
+    sftpgo_image: "drakkan/sftpgo:latest"
+    sftpgo_data_dir: "/srv/sftpgo"
+    sftpgo_home_dir: "/var/lib/sftpgo"
+
+  tasks:
+    - name: Create SFTPGo data directory
+      file:
+        path: "{{ sftpgo_data_dir }}"
+        state: directory
+        mode: "0755"
+        owner: "1000"
+        group: "1000"
+
+    - name: Create SFTPGo home directory
+      file:
+        path: "{{ sftpgo_home_dir }}"
+        state: directory
+        mode: "0755"
+        owner: "1000"
+        group: "1000"
+
+    - name: Remove existing SFTPGo container if it exists
+      docker_container:
+        name: sftpgo
+        state: absent
+      ignore_errors: yes
+
+    - name: Run SFTPGo container
+      docker_container:
+        name: sftpgo
+        image: "{{ sftpgo_image }}"
+        state: started
+        recreate: yes
+        restart_policy: always
+        ports:
+          # - "80:80"
+          # - "8080:8080"
+          # - "2022:2022"
+          - "443:443"
+        volumes:
+          - "{{ sftpgo_data_dir }}:/srv/sftpgo"
+          - "{{ sftpgo_home_dir }}:/var/lib/sftpgo"
+        env:
+          SFTPGO_HTTPD__BINDINGS__0__PORT: "443"
+          SFTPGO_HTTPD__BINDINGS__0__ADDRESS: ""
+          SFTPGO_HTTPD__BINDINGS__0__ENABLE_WEB_ADMIN: "true"
+          SFTPGO_HTTPD__BINDINGS__0__ENABLE_WEB_CLIENT: "true"
+          SFTPGO_HTTPD__BINDINGS__0__ENABLE_HTTPS: "true"
+          SFTPGO_HTTPD__BINDINGS__0__CERT_FILE: "/var/lib/sftpgo/certs/sftp1-poc.stoxkart.org.crt"
+          SFTPGO_HTTPD__BINDINGS__0__CERT_KEY_FILE: "/var/lib/sftpgo/certs/sftp1-poc.stoxkart.org.key"
+          SFTPGO_HTTPD__BINDINGS__1__PORT: "80"
+          SFTPGO_HTTPD__BINDINGS__1__ADDRESS: ""
+          SFTPGO_HTTPD__BINDINGS__1__ENABLE_WEB_ADMIN: "false"
+          SFTPGO_HTTPD__BINDINGS__1__ENABLE_WEB_CLIENT: "false"
+          SFTPGO_HTTPD__BINDINGS__1__ENABLE_ACME: "true"
+          SFTPGO_HTTPD__ACME__DOMAINS__0: ""
+          SFTPGO_HTTPD__ACME__EMAIL: ""
+          SFTPGO_HTTPD__ACME__KEY_TYPE: "ec256"
+          SFTPGO_HTTPD__ACME__CERTS_PATH: "/var/lib/sftpgo/certs"
+          SFTPGO_HTTPD__ACME__CA_ENDPOINT: "https://acme-v02.api.letsencrypt.org/directory"
+
+          # Rate limiting configuration
+          SFTPGO_COMMON__RATE_LIMITERS__0__AVERAGE: "100"
+          SFTPGO_COMMON__RATE_LIMITERS__0__PERIOD: "1000"
+          SFTPGO_COMMON__RATE_LIMITERS__0__BURST: "1"
+          SFTPGO_COMMON__RATE_LIMITERS__0__TYPE: "1"
+          SFTPGO_COMMON__RATE_LIMITERS__0__PROTOCOLS: "SSH,FTP,DAV,HTTP"
+          SFTPGO_COMMON__RATE_LIMITERS__0__GENERATE_DEFENDER_EVENTS: "0"
+          SFTPGO_COMMON__RATE_LIMITERS__0__ENTRIES_SOFT_LIMIT: "100"
+          SFTPGO_COMMON__RATE_LIMITERS__0__ENTRIES_HARD_LIMIT: "150"
+
+          SFTPGO_COMMON__RATE_LIMITERS__1__AVERAGE: "10"
+          SFTPGO_COMMON__RATE_LIMITERS__1__PERIOD: "1000"
+          SFTPGO_COMMON__RATE_LIMITERS__1__BURST: "1"
+          SFTPGO_COMMON__RATE_LIMITERS__1__TYPE: "2"
+          SFTPGO_COMMON__RATE_LIMITERS__1__PROTOCOLS: "SSH,FTP"
+          SFTPGO_COMMON__RATE_LIMITERS__1__GENERATE_DEFENDER_EVENTS: "0"
+          SFTPGO_COMMON__RATE_LIMITERS__1__ENTRIES_SOFT_LIMIT: "100"
+          SFTPGO_COMMON__RATE_LIMITERS__1__ENTRIES_HARD_LIMIT: "150"
+
+          # Defender configuration
+          # SFTPGO_COMMON__DEFENDER__ENABLED: "true"
+          # SFTPGO_COMMON__DEFENDER__DRIVER: "memory"
+          # SFTPGO_COMMON__DEFENDER__BAN_TIME: "30"
+          # SFTPGO_COMMON__DEFENDER__BAN_TIME_INCREMENT: "50"
+          # SFTPGO_COMMON__DEFENDER__THRESHOLD: "8"
+          # SFTPGO_COMMON__DEFENDER__SCORE_INVALID: "2"
+          # SFTPGO_COMMON__DEFENDER__SCORE_VALID: "1"
+          # SFTPGO_COMMON__DEFENDER__SCORE_LIMIT_EXCEEDED: "3"
+          # SFTPGO_COMMON__DEFENDER__OBSERVATION_TIME: "30"
+          # SFTPGO_COMMON__DEFENDER__ENTRIES_SOFT_LIMIT: "100"
+          # SFTPGO_COMMON__DEFENDER__ENTRIES_HARD_LIMIT: "150"
